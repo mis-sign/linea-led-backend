@@ -263,5 +263,31 @@ app.use((err, req, res, next) => {
     if (err) return res.status(400).json({ success: false, message: err.message });
     next();
 });
+// FRONTEND COMPATIBILITY ROUTE 1: For Warranty Lookup
+app.get('/api/warranties/:warrantyId', (req, res) => {
+    const record = db.prepare('SELECT * FROM warranties WHERE warranty_id = ?').get(req.params.warrantyId.trim());
+    if (!record) return res.json({ success: true, found: false });
+    
+    const today = new Date().toISOString().slice(0, 10);
+    const inWarranty = today >= record.start_date && today <= record.end_date;
+    
+    res.json({
+        success: true,
+        found: true,
+        inWarranty,
+        data: {
+            warrantyId: record.warranty_id,
+            clientName: record.customer_name,
+            branchName: record.branch_name,
+            siteAddress: record.site_address,
+            endDate: record.end_date
+        }
+    });
+});
 
+// FRONTEND COMPATIBILITY ROUTE 2: For Admin Complaints
+app.get('/admin/complaints', (req, res) => {
+    const records = db.prepare('SELECT * FROM complaints ORDER BY id DESC').all();
+    res.json({ success: true, data: records });
+});
 app.listen(PORT, () => console.log(`Linea LED backend running on port ${PORT}`));
