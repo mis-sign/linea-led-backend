@@ -31,6 +31,9 @@ const submitLimiter = rateLimit({
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
 app.use('/uploads', express.static(uploadsDir));
+const publicDir = path.join(__dirname, 'public');
+if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir);
+app.use(express.static(publicDir));
 
 // ==========================================
 // FILE UPLOAD CONFIG
