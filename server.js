@@ -12,6 +12,11 @@ const rateLimit = require('express-rate-limit');
 const db = require('./db');
 
 const app = express();
+app.use(cors({
+    origin: 'https://mis-sign.github.io',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
+}));
 const PORT = process.env.PORT || 5000;
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
 
