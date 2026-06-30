@@ -286,7 +286,7 @@ app.get('/api/warranties/:warrantyId', (req, res) => {
 });
 
 // FRONTEND COMPATIBILITY ROUTE 2: For Admin Complaints
-app.get('/admin/complaints', (req, res) => {
+app.get('/api/admin/complaints', (req, res) => {
     const records = db.prepare('SELECT * FROM complaints ORDER BY id DESC').all();
     res.json({ success: true, data: records });
 });
