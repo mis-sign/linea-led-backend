@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Linea LED — Register Complaint</title>
+<style>
+:root{
+  --bg:#0f1923;--card:#1a2535;--bg2:#162030;
+  --border:#263347;--orange:#ff7a1a;--green:#1db86a;--green-dim:rgba(29,184,106,0.12);
+  --red:#e84040;--red-dim:rgba(232,64,64,0.12);--amber:#f5b731;
+  --text:#e8edf5;--text2:#8fa3be;--text3:#5b7290;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;padding-bottom:40px;}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:16px 20px;text-align:center;}
+header h1{color:var(--orange);font-size:1.05rem;font-weight:800;letter-spacing:0.3px;}
+header p{color:var(--text3);font-size:0.65rem;letter-spacing:1.5px;text-transform:uppercase;margin-top:2px;}
+main{max-width:560px;margin:0 auto;padding:20px 16px;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:22px;margin-bottom:18px;}
+.card-title{font-size:1rem;font-weight:800;color:var(--text);margin-bottom:18px;text-align:center;}
+.scan-block{border:1px dashed var(--border);border-radius:12px;padding:18px;background:var(--bg2);margin-bottom:18px;}
+.scan-block-header{font-size:0.7rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--green);margin-bottom:12px;display:flex;align-items:center;gap:6px;}
+.scan-block-header.orange{color:var(--orange);}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block;}
+.form-label{font-size:0.72rem;font-weight:700;letter-spacing:0.5px;color:var(--text3);margin:12px 0 5px;display:block;text-transform:uppercase;}
+.form-input{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:11px 14px;border-radius:9px;font-size:0.88rem;font-family:inherit;}
+.form-input:focus{outline:none;border-color:var(--orange);}
+.form-input::placeholder{color:var(--text3);}
+textarea.form-input{resize:vertical;min-height:70px;}
+.row{display:flex;gap:14px;flex-wrap:wrap;}
+.row>div{flex:1;min-width:190px;}
+.gps-box{background:var(--bg2);border:1px solid var(--border);border-radius:9px;padding:10px 14px;font-family:monospace;font-size:0.82rem;color:var(--text3);margin-top:4px;}
+.gps-box.locked{color:var(--green);background:var(--green-dim);border-color:rgba(29,184,106,0.25);}
+.gps-box.denied{color:var(--red);background:var(--red-dim);border-color:rgba(232,64,64,0.25);}
+.issue-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;}
+@media(max-width:480px){.issue-grid{grid-template-columns:1fr;}}
+.issue-option{border:1px solid var(--border);border-radius:9px;padding:11px 14px;display:flex;align-items:center;gap:9px;cursor:pointer;font-size:0.84rem;color:var(--text2);background:var(--bg2);}
+.issue-option.sel{border-color:var(--orange);background:rgba(255,122,26,0.12);color:var(--orange);font-weight:700;}
+.issue-option input{display:none;}
+.photo-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:6px;}
+.photo-slot{border:2px dashed var(--border);border-radius:10px;padding:16px 10px;text-align:center;cursor:pointer;position:relative;background:var(--bg2);}
+.photo-slot input{position:absolute;inset:0;opacity:0;cursor:pointer;}
+.photo-slot .ph-icon{font-size:1.4rem;color:var(--text3);}
+.photo-slot .ph-lbl{font-size:0.65rem;color:var(--text3);margin-top:4px;}
+.photo-slot.filled{border-color:var(--green);border-style:solid;}
+.photo-slot.filled .ph-icon{color:var(--green);}
+.btn-primary{width:100%;background:var(--orange);color:#fff;border:none;padding:15px;border-radius:10px;font-size:0.95rem;font-weight:800;letter-spacing:0.5px;cursor:pointer;margin-top:18px;text-transform:uppercase;}
+.btn-primary:disabled{background:#5a3a22;color:#a0704a;}
+#msgBox{display:none;padding:13px 18px;border-radius:10px;margin-bottom:16px;font-size:0.85rem;font-weight:600;}
+#msgBox.success{background:var(--green-dim);color:var(--green);border:1px solid rgba(29,184,106,0.3);display:block;}
+#msgBox.error{background:var(--red-dim);color:var(--red);border:1px solid rgba(232,64,64,0.3);display:block;}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:200;padding:20px;}
+.overlay.show{display:flex;}
+.success-box{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:36px 28px;max-width:380px;width:100%;text-align:center;}
+.success-icon{width:64px;height:64px;border-radius:50%;background:var(--green-dim);color:var(--green);font-size:2rem;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;}
+.success-box h3{font-size:1.1rem;margin-bottom:6px;}
+.success-box p{color:var(--text3);font-size:0.84rem;line-height:1.5;}
+.success-tid{font-family:monospace;font-size:1.1rem;color:var(--orange);font-weight:800;margin:14px 0;}
+.success-wstatus{padding:6px 14px;border-radius:8px;font-size:0.8rem;font-weight:700;display:inline-block;margin-bottom:14px;}
+footer{text-align:center;padding:20px;font-size:0.7rem;color:var(--text3);}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚡ LINEA LED SERVICE</h1>
+  <p>Signage Fault Registration</p>
+</header>
+
+<main>
+  <div id="msgBox"></div>
+  <div class="card">
+    <div class="card-title">Report a Signage Issue</div>
+
+    <div class="scan-block">
+      <div class="scan-block-header"><span class="dot" id="scanDot" style="background:var(--text3)"></span> SCAN MATRIX DATA PRE-LOAD</div>
+      <div class="row">
+        <div><span class="form-label">Warranty Token Serial</span><input class="form-input" id="f_warrantyId" placeholder="Awaiting Valid Scan..." readonly></div>
+        <div><span class="form-label">Branch / Client Name</span><input class="form-input" id="f_clientName" placeholder="Awaiting Valid Scan..." readonly></div>
+      </div>
+      <span class="form-label">Site Full Address Reference</span>
+      <input class="form-input" id="f_siteAddress" placeholder="Address parameter auto mapping..." readonly>
+      <div id="wStatusBanner" style="display:none;margin-top:12px;padding:10px 14px;border-radius:9px;font-size:0.82rem;font-weight:700;"></div>
+      <span class="form-label">GPS Location</span>
+      <div class="gps-box" id="gpsBox">📡 Acquiring GPS signal...</div>
+    </div>
+
+    <form id="complaintForm">
+      <div class="scan-block-header orange" style="margin-bottom:12px;"><span class="dot"></span> UPLOAD DEFECTIVE PRODUCT PHOTOGRAPHS</div>
+      <div class="photo-row">
+        <div class="photo-slot" id="slot1"><input type="file" name="photo1" id="ph1" accept="image/*" required><div class="ph-icon">📷</div><div class="ph-lbl">Photo 1 *</div></div>
+        <div class="photo-slot" id="slot2"><input type="file" name="photo2" id="ph2" accept="image/*"><div class="ph-icon">📷</div><div class="ph-lbl">Photo 2</div></div>
+        <div class="photo-slot" id="slot3"><input type="file" name="photo3" id="ph3" accept="image/*"><div class="ph-icon">📷</div><div class="ph-lbl">Photo 3</div></div>
+      </div>
+
+      <div class="row" style="margin-top:4px;">
+        <div><span class="form-label">Contact Person Name *</span><input class="form-input" name="contactName" required></div>
+        <div><span class="form-label">Active WhatsApp Mobile *</span><input class="form-input" name="contactPhone" required placeholder="9876543210"></div>
+      </div>
+      <span class="form-label">Customer Email (optional)</span>
+      <input class="form-input" type="email" name="contactEmail">
+
+      <span class="form-label">Signage Technical Fault Diagnosis *</span>
+      <div class="issue-grid" id="issueGrid">
+        <label class="issue-option"><input type="radio" name="issueReported" value="Complete LED Blackout" required> 🔴 Complete LED Blackout</label>
+        <label class="issue-option"><input type="radio" name="issueReported" value="Partial Dim Patches"> 🟡 Partial Dim Patches</label>
+        <label class="issue-option"><input type="radio" name="issueReported" value="LED Module Dead"> ⚫ LED Module Dead</label>
+        <label class="issue-option"><input type="radio" name="issueReported" value="Power Driver Failure"> ⚡ Power Driver Failure</label>
+        <label class="issue-option"><input type="radio" name="issueReported" value="Flickering / Blink Issue"> 🔆 Flickering / Blink Issue</label>
+        <label class="issue-option"><input type="radio" name="issueReported" value="Structural Damage"> 🔧 Structural Damage</label>
+      </div>
+      <span class="form-label" style="margin-top:14px;">Any Other Issue (optional)</span>
+      <textarea class="form-input" id="otherNote" placeholder="Describe the issue in detail..."></textarea>
+
+      <button type="submit" class="btn-primary">SUBMIT COMPLAINT</button>
+    </form>
+  </div>
+</main>
+
+<footer>© 2026 LINEA LED SIGNAGE NETWORKS</footer>
+
+<div class="overlay" id="successOverlay">
+  <div class="success-box">
+    <div class="success-icon">✓</div>
+    <h3>Complaint Registered!</h3>
+    <p>Your service request has been logged successfully.</p>
+    <div class="success-tid" id="successTid">—</div>
+    <div id="successWStatus" class="success-wstatus"></div>
+    <p style="margin-bottom:16px;">Our team will contact you shortly. You'll receive a confirmation on WhatsApp & Email.</p>
+    <button class="btn-primary" id="closeSuccessBtn" style="margin-top:0;">Close</button>
+  </div>
+</div>
+
+<script>
+// Point this at your deployed backend URL
+const API_BASE = window.LINEA_API_BASE || 'http://localhost:5000';
+
+function showMsg(text, type) {
+  const b = document.getElementById('msgBox');
+  b.textContent = text; b.className = type;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  setTimeout(() => { b.style.display = 'none'; }, 6000);
+}
+
+['ph1','ph2','ph3'].forEach((id,i)=>{
+  document.getElementById(id).addEventListener('change', function(){
+    const slot = document.getElementById('slot'+(i+1));
+    if (this.files.length){ slot.classList.add('filled'); slot.querySelector('.ph-icon').textContent='✅'; slot.querySelector('.ph-lbl').textContent=this.files[0].name.slice(0,14); }
+  });
+});
+document.querySelectorAll('.issue-option').forEach(opt=>{
+  opt.addEventListener('click', ()=>{ document.querySelectorAll('.issue-option').forEach(o=>o.classList.remove('sel')); opt.classList.add('sel'); });
+});
+
+(function initScan(){
+  const p = new URLSearchParams(location.search);
+  const wid = p.get('warrantyId'), branch = p.get('branch'), address = p.get('address');
+  if (branch) document.getElementById('f_clientName').value = branch;
+  if (address) document.getElementById('f_siteAddress').value = address;
+  if (wid){
+    document.getElementById('f_warrantyId').value = wid;
+    fetch(`${API_BASE}/api/warranty-lookup/${encodeURIComponent(wid)}`)
+      .then(r=>r.json()).then(data=>{
+        const dot = document.getElementById('scanDot');
+        const banner = document.getElementById('wStatusBanner');
+        if (data.found){
+          document.getElementById('f_clientName').value = data.data.clientName || branch || '';
+          document.getElementById('f_siteAddress').value = data.data.siteAddress || address || '';
+          if (data.inWarranty){
+            dot.style.background='var(--green)';
+            banner.style.display='block'; banner.style.background='var(--green-dim)'; banner.style.color='var(--green)'; banner.style.border='1px solid rgba(29,184,106,0.3)';
+            banner.textContent = `✅ WARRANTY ACTIVE — Valid until ${data.data.endDate}`;
+          } else {
+            dot.style.background='var(--red)';
+            banner.style.display='block'; banner.style.background='var(--red-dim)'; banner.style.color='var(--red)'; banner.style.border='1px solid rgba(232,64,64,0.3)';
+            banner.textContent = `⚠️ WARRANTY EXPIRED — Expired on ${data.data.endDate}`;
+          }
+        } else { dot.style.background='var(--amber)'; }
+      }).catch(()=>{});
+  }
+  const gpsBox = document.getElementById('gpsBox');
+  if (navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(
+      pos=>{ window.__lat=pos.coords.latitude.toFixed(5); window.__lng=pos.coords.longitude.toFixed(5);
+             gpsBox.className='gps-box locked'; gpsBox.textContent=`📍 GPS LOCKED — LAT: ${window.__lat}  |  LNG: ${window.__lng}`; },
+      ()=>{ gpsBox.className='gps-box denied'; gpsBox.textContent='❌ GPS permission denied'; },
+      { enableHighAccuracy:true, timeout:10000 }
+    );
+  } else { gpsBox.className='gps-box denied'; gpsBox.textContent='GPS not supported on this device'; }
+})();
+
+document.getElementById('complaintForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const form = e.target;
+  const fd = new FormData(form);
+  fd.append('warrantyId', document.getElementById('f_warrantyId').value);
+  fd.append('clientName', document.getElementById('f_clientName').value);
+  fd.append('siteAddress', document.getElementById('f_siteAddress').value);
+  if (window.__lat) fd.append('gpsLat', window.__lat);
+  if (window.__lng) fd.append('gpsLng', window.__lng);
+  const other = document.getElementById('otherNote').value.trim();
+  if (!fd.get('issueReported') && other) fd.set('issueReported', other);
+  else if (other) fd.set('issueReported', fd.get('issueReported') + ' — ' + other);
+
+  const btn = form.querySelector('button[type="submit"]');
+  btn.disabled = true; btn.textContent = 'Submitting...';
+  try {
+    const res = await fetch(`${API_BASE}/api/register-complaint`, { method:'POST', body: fd });
+    const data = await res.json();
+    if (data.success){
+      const r = data.data;
+      document.getElementById('successTid').textContent = `TICKET ID: ${r.ticket_id}`;
+      const ws = document.getElementById('successWStatus');
+      ws.textContent = r.in_warranty ? '✅ In Warranty' : '⚠️ Not In Warranty';
+      ws.style.background = r.in_warranty ? 'var(--green-dim)' : 'var(--red-dim)';
+      ws.style.color = r.in_warranty ? 'var(--green)' : 'var(--red)';
+      document.getElementById('successOverlay').classList.add('show');
+      form.reset();
+      document.querySelectorAll('.issue-option').forEach(o=>o.classList.remove('sel'));
+      document.querySelectorAll('.photo-slot').forEach((s,i)=>{ s.classList.remove('filled'); s.querySelector('.ph-icon').textContent='📷'; s.querySelector('.ph-lbl').textContent=`Photo ${i+1}${i===0?' *':''}`; });
+    } else {
+      showMsg(data.message || (data.errors ? data.errors.join(', ') : 'Submission failed'), 'error');
+    }
+  } catch(err){
+    showMsg('Cannot reach server — check connection.', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'SUBMIT COMPLAINT';
+  }
+});
+document.getElementById('closeSuccessBtn').addEventListener('click', ()=>document.getElementById('successOverlay').classList.remove('show'));
+</script>
+</body>
+</html>

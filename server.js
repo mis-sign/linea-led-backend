@@ -422,52 +422,69 @@ app.post('/api/admin/warranties/bulk-upload', requireAdmin, csvUpload.single('fi
     let inserted = 0, failed = 0;
     const errors = [];
 
-    dataRows.forEach((cells, idx) => {
+    const insertOne = (cells, idx) => {
         const rowNum = idx + 2;
         const row = {};
         headers.forEach((h, i) => { row[h] = (cells[i] || '').trim(); });
 
-        try {
-            if (isFullExport) {
-                const warrantyId = row['Warranty ID'];
-                const customerName = row['Customer Name'];
-                if (!warrantyId || !customerName) { failed++; errors.push(`Row ${rowNum}: missing Warranty ID or Customer Name`); return; }
+        if (isFullExport) {
+            const warrantyId = row['Warranty ID'];
+            const customerName = row['Customer Name'];
+            if (!warrantyId || !customerName) { failed++; errors.push(`Row ${rowNum}: missing Warranty ID or Customer Name`); return; }
 
-                const startD = parseFlexibleDate(row['Warranty Start Date']);
-                const endD = parseFlexibleDate(row['Warranty End Date']);
-                if (!startD || !endD) { failed++; errors.push(`Row ${rowNum}: invalid date (start="${row['Warranty Start Date']}" end="${row['Warranty End Date']}")`); return; }
+            const startD = parseFlexibleDate(row['Warranty Start Date']);
+            const endD = parseFlexibleDate(row['Warranty End Date']);
+            if (!startD || !endD) { failed++; errors.push(`Row ${rowNum}: invalid date (start="${row['Warranty Start Date']}" end="${row['Warranty End Date']}")`); return; }
 
-                const monthsMatch = (row['Total Warranty'] || '').match(/(\d+)/);
-                const years = monthsMatch ? Number(monthsMatch[1]) : null;
-                const months = years ? (row['Total Warranty'].toLowerCase().includes('year') ? years * 12 : years) : Math.round((endD - startD) / (1000 * 60 * 60 * 24 * 30));
+            const monthsMatch = (row['Total Warranty'] || '').match(/(\d+)/);
+            const years = monthsMatch ? Number(monthsMatch[1]) : null;
+            const months = years ? (row['Total Warranty'].toLowerCase().includes('year') ? years * 12 : years) : Math.round((endD - startD) / (1000 * 60 * 60 * 24 * 30));
 
-                insertStmt.run(
-                    warrantyId, customerName, row['Project Name'] || null, row['Contact Person Number'] || null,
-                    row['Contact Person Name'] || null, (row['Email'] && row['Email'] !== '-') ? row['Email'] : null,
-                    row['Site Address'] || null, row['City Name'] || null, row['Pin Code'] || null,
-                    row['Registration Status'] || null, row['Product Name'] || null, row['Product Type'] || null,
-                    row['SKU Name'] || null, row['Brand'] || null, months || 12, toISODate(startD), toISODate(endD)
-                );
-                inserted++;
-            } else {
-                const warrantyId = row.warrantyId, customerName = row.customerName;
-                if (!warrantyId || !customerName || !row.startDate) { failed++; errors.push(`Row ${rowNum}: missing required field`); return; }
-                const months = Number(row.warrantyMonths) || 12;
-                const start = parseFlexibleDate(row.startDate);
-                if (!start) { failed++; errors.push(`Row ${rowNum}: invalid startDate "${row.startDate}"`); return; }
-                const end = new Date(start);
-                end.setMonth(end.getMonth() + months);
-                insertStmt.run(
-                    warrantyId, customerName, row.branchName || null, row.contactNumber || null,
-                    null, null, row.siteAddress || null, null, null, null, null, null, null, null,
-                    months, toISODate(start), toISODate(end)
-                );
-                inserted++;
-            }
-        } catch (err) { failed++; errors.push(`Row ${rowNum}: ${err.message}`); }
+            insertStmt.run(
+                warrantyId, customerName, row['Project Name'] || null, row['Contact Person Number'] || null,
+                row['Contact Person Name'] || null, (row['Email'] && row['Email'] !== '-') ? row['Email'] : null,
+                row['Site Address'] || null, row['City Name'] || null, row['Pin Code'] || null,
+                row['Registration Status'] || null, row['Product Name'] || null, row['Product Type'] || null,
+                row['SKU Name'] || null, row['Brand'] || null, months || 12, toISODate(startD), toISODate(endD)
+            );
+            inserted++;
+        } else {
+            const warrantyId = row.warrantyId, customerName = row.customerName;
+            if (!warrantyId || !customerName || !row.startDate) { failed++; errors.push(`Row ${rowNum}: missing required field`); return; }
+            const months = Number(row.warrantyMonths) || 12;
+            const start = parseFlexibleDate(row.startDate);
+            if (!start) { failed++; errors.push(`Row ${rowNum}: invalid startDate "${row.startDate}"`); return; }
+            const end = new Date(start);
+            end.setMonth(end.getMonth() + months);
+            insertStmt.run(
+                warrantyId, customerName, row.branchName || null, row.contactNumber || null,
+                null, null, row.siteAddress || null, null, null, null, null, null, null, null,
+                months, toISODate(start), toISODate(end)
+            );
+            inserted++;
+        }
+    };
+
+    // Wrap in an explicit transaction: much faster for large CSVs and ensures
+    // we don't end up with a half-committed state if something throws mid-way.
+    const runBulk = db.transaction((rows) => {
+        rows.forEach((cells, idx) => {
+            try { insertOne(cells, idx); }
+            catch (err) { failed++; errors.push(`Row ${idx + 2}: ${err.message}`); }
+        });
     });
 
-    res.json({ success: true, message: `Processed ${dataRows.length} rows`, inserted, failed, errors: errors.slice(0, 30) });
+    try {
+        runBulk(dataRows);
+    } catch (err) {
+        console.error('Bulk warranty upload transaction failed:', err);
+        return res.status(500).json({ success: false, message: `Upload failed: ${err.message}` });
+    }
+
+    const totalNow = db.prepare('SELECT COUNT(*) AS c FROM warranties').get().c;
+    console.log(`[CSV Upload] Processed ${dataRows.length} rows -> inserted/updated ${inserted}, failed ${failed}. Total warranties in DB now: ${totalNow}`);
+
+    res.json({ success: true, message: `Processed ${dataRows.length} rows`, inserted, failed, totalInDb: totalNow, errors: errors.slice(0, 30) });
 });
 
 // ==========================================
@@ -479,7 +496,7 @@ app.post('/api/qr', requireAdmin, async (req, res) => {
 
     const base = process.env.FRONTEND_URL || process.env.ALLOWED_ORIGIN || '';
     const params = new URLSearchParams({ warrantyId, branch: branchName || '', address: siteAddress || '' });
-    const targetUrl = `${base}/?${params.toString()}#register`;
+    const targetUrl = `${base}/register.html?${params.toString()}`;
     try {
         const qrDataUrl = await QRCode.toDataURL(targetUrl, { width: 400, margin: 2, color: { dark: '#1c2733', light: '#ffffff' } });
         res.json({ success: true, qr: qrDataUrl, url: targetUrl });
@@ -488,7 +505,11 @@ app.post('/api/qr', requireAdmin, async (req, res) => {
     }
 });
 
-app.get('/api/health', (req, res) => res.json({ success: true, status: 'Linea backend running' }));
+app.get('/api/health', (req, res) => {
+    const wCount = db.prepare('SELECT COUNT(*) AS c FROM warranties').get().c;
+    const cCount = db.prepare('SELECT COUNT(*) AS c FROM complaints').get().c;
+    res.json({ success: true, status: 'Linea backend running', warrantiesInDb: wCount, complaintsInDb: cCount });
+});
 
 app.use((err, req, res, next) => {
     if (err) return res.status(400).json({ success: false, message: err.message || 'Unexpected error' });
