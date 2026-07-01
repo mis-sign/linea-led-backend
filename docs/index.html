@@ -455,21 +455,32 @@ footer{text-align:center;padding:20px;font-size:0.72rem;color:var(--text3);}
     <div class="card">
       <div class="card-title">Warranty Records</div>
       <div class="w-search-bar">
-        <input class="form-input" id="wSearch" placeholder="🔍 Search warranty ID / customer / city...">
+        <input class="form-input" id="wSearch" placeholder="🔍 Search warranty ID / customer / city / phone...">
         <select class="form-input" id="wFilterStatus" style="width:auto;min-width:160px;">
           <option value="">All Status</option>
           <option value="active">Active</option>
           <option value="expired">Expired</option>
         </select>
+        <span style="font-size:0.72rem;color:var(--text3);align-self:center;">← Drag table to scroll →</span>
       </div>
-      <div class="tbl-wrap">
-        <table>
+      <div class="tbl-wrap" id="wTblWrap" style="cursor:grab;">
+        <table style="min-width:1400px;">
           <thead><tr>
-            <th>Warranty ID</th><th>Customer</th><th>Contact Person</th><th>Phone</th>
-            <th>Project Name</th><th>City</th><th>Product</th>
-            <th>Start</th><th>End</th><th>Status</th>
+            <th style="position:sticky;left:0;background:var(--bg2);z-index:2;min-width:120px;">Warranty ID</th>
+            <th style="min-width:160px;">Customer</th>
+            <th style="min-width:160px;">Contact Person</th>
+            <th style="min-width:120px;">Phone</th>
+            <th style="min-width:160px;">Project Name</th>
+            <th style="min-width:100px;">City</th>
+            <th style="min-width:80px;">Pin</th>
+            <th style="min-width:200px;">Site Address</th>
+            <th style="min-width:160px;">Product</th>
+            <th style="min-width:100px;">SKU</th>
+            <th style="min-width:100px;">Start</th>
+            <th style="min-width:100px;">End</th>
+            <th style="min-width:100px;">Status</th>
           </tr></thead>
-          <tbody id="wBody"><tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text3);">Loading...</td></tr></tbody>
+          <tbody id="wBody"><tr><td colspan="13" style="text-align:center;padding:30px;color:var(--text3);">Loading...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -834,7 +845,7 @@ function renderWarranties() {
     const active = today >= r.start_date && today <= r.end_date;
     if (sf === 'active' && !active) return false;
     if (sf === 'expired' && active) return false;
-    if (q && !(`${r.warranty_id} ${r.customer_name} ${r.city_name || ''}`).toLowerCase().includes(q)) return false;
+    if (q && !(`${r.warranty_id} ${r.customer_name} ${r.city_name||''} ${r.contact_number||''} ${r.contact_person_name||''}`).toLowerCase().includes(q)) return false;
     return true;
   });
 
@@ -844,26 +855,40 @@ function renderWarranties() {
   document.getElementById('ws_exp').textContent = __allWarranties.length - active;
 
   const body = document.getElementById('wBody');
-  if (!rows.length) { body.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text3);">No records found.</td></tr>'; return; }
+  if (!rows.length) { body.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:30px;color:var(--text3);">No records found.</td></tr>'; return; }
 
   body.innerHTML = rows.map(r => {
     const act = today >= r.start_date && today <= r.end_date;
     return `<tr class="${act ? 'inw' : 'outw'}">
-      <td style="font-family:monospace;color:var(--orange);font-weight:700;">${r.warranty_id}</td>
-      <td style="color:var(--text);">${r.customer_name}</td>
-      <td>${r.contact_person_name || '-'}</td>
-      <td>${r.contact_number || '-'}</td>
-      <td>${r.branch_name || '-'}</td>
-      <td>${r.city_name || '-'}</td>
-      <td style="font-size:0.75rem;">${r.product_name || '-'}</td>
-      <td>${r.start_date}</td>
-      <td>${r.end_date}</td>
+      <td style="position:sticky;left:0;background:${act?'rgba(29,184,106,0.06)':'rgba(232,64,64,0.06)'};font-family:monospace;color:var(--orange);font-weight:700;">${r.warranty_id}</td>
+      <td style="color:var(--text);white-space:nowrap;">${r.customer_name}</td>
+      <td style="white-space:nowrap;">${r.contact_person_name || '-'}</td>
+      <td style="white-space:nowrap;">${r.contact_number || '-'}</td>
+      <td style="white-space:nowrap;">${r.branch_name || '-'}</td>
+      <td style="white-space:nowrap;">${r.city_name || '-'}</td>
+      <td>${r.pin_code || '-'}</td>
+      <td style="font-size:0.75rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="${r.site_address||''}">${r.site_address || '-'}</td>
+      <td style="font-size:0.75rem;white-space:nowrap;">${r.product_name || '-'}</td>
+      <td style="font-size:0.72rem;color:var(--text3);">${r.sku_name || '-'}</td>
+      <td style="white-space:nowrap;">${r.start_date}</td>
+      <td style="white-space:nowrap;">${r.end_date}</td>
       <td><span class="badge ${act ? 'badge-inw' : 'badge-outw'}">${act ? 'Active' : 'Expired'}</span></td>
     </tr>`;
   }).join('');
 }
 
 ['wSearch', 'wFilterStatus'].forEach(id => document.getElementById(id).addEventListener('input', renderWarranties));
+
+// Drag to scroll on warranty table
+(function initDragScroll() {
+  const el = document.getElementById('wTblWrap');
+  if (!el) return;
+  let isDown = false, startX, scrollLeft;
+  el.addEventListener('mousedown', e => { isDown = true; el.style.cursor = 'grabbing'; startX = e.pageX - el.offsetLeft; scrollLeft = el.scrollLeft; });
+  el.addEventListener('mouseleave', () => { isDown = false; el.style.cursor = 'grab'; });
+  el.addEventListener('mouseup', () => { isDown = false; el.style.cursor = 'grab'; });
+  el.addEventListener('mousemove', e => { if (!isDown) return; e.preventDefault(); const x = e.pageX - el.offsetLeft; el.scrollLeft = scrollLeft - (x - startX) * 1.5; });
+})();
 
 // =========================================
 // QR GENERATOR
