@@ -471,21 +471,11 @@ app.post('/api/admin/warranties/bulk-upload', requireAdmin, csvUpload.single('fi
         }
     };
 
-    // Wrap in an explicit transaction: much faster for large CSVs and ensures
-    // we don't end up with a half-committed state if something throws mid-way.
-    const runBulk = db.transaction((rows) => {
-        rows.forEach((cells, idx) => {
-            try { insertOne(cells, idx); }
-            catch (err) { failed++; errors.push(`Row ${idx + 2}: ${err.message}`); }
-        });
+    // Simple loop — no db.transaction needed
+    dataRows.forEach((cells, idx) => {
+        try { insertOne(cells, idx); }
+        catch (err) { failed++; errors.push(`Row ${idx + 2}: ${err.message}`); }
     });
-
-    try {
-        runBulk(dataRows);
-    } catch (err) {
-        console.error('Bulk warranty upload transaction failed:', err);
-        return res.status(500).json({ success: false, message: `Upload failed: ${err.message}` });
-    }
 
     const totalNow = db.prepare('SELECT COUNT(*) AS c FROM warranties').get().c;
     console.log(`[CSV Upload] Processed ${dataRows.length} rows -> inserted/updated ${inserted}, failed ${failed}. Total warranties in DB now: ${totalNow}`);
@@ -571,12 +561,8 @@ app.post('/api/admin/warranties/csv-json', requireAdmin, (req, res) => {
         }
     };
 
-    const runBulk = db.transaction((rows) => {
-        rows.forEach((cells, idx) => { try { insertOne(cells, idx); } catch(err) { failed++; errors.push(`Row ${idx+2}: ${err.message}`); } });
-    });
-
-    try { runBulk(dataRows); }
-    catch (err) { return res.status(500).json({ success: false, message: `Upload failed: ${err.message}` }); }
+    // Simple loop — no db.transaction needed
+    dataRows.forEach((cells, idx) => { try { insertOne(cells, idx); } catch(err) { failed++; errors.push(`Row ${idx+2}: ${err.message}`); } });
 
     const totalNow = db.prepare('SELECT COUNT(*) AS c FROM warranties').get().c;
     console.log(`[CSV JSON Upload] ${inserted} saved, ${failed} failed. Total in DB: ${totalNow}`);

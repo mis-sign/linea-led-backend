@@ -1020,32 +1020,43 @@ document.getElementById('csvFileInput').addEventListener('change', function () {
 document.getElementById('csvUploadBtn').addEventListener('click', async () => {
   const fi = document.getElementById('csvFileInput');
   const resultBox = document.getElementById('csvResult');
-  if (!fi.files.length) { showMsg('Select a CSV file first.', 'error'); return; }
-  if (!adminKey) { showMsg('Unlock Admin Console first.', 'error'); return; }
-  const fd = new FormData();
-  fd.append('file', fi.files[0]);
-  resultBox.innerHTML = '<div style="color:var(--text3);">⏳ Uploading and processing...</div>';
-  try {
-    const res = await fetch(`${API_BASE}/api/admin/warranties/bulk-upload`, {
-      method: 'POST', headers: { 'x-admin-key': adminKey }, body: fd
-    });
-    const data = await res.json();
-    if (data.success) {
-      resultBox.innerHTML = `
-        <div style="background:var(--green-dim);border:1px solid rgba(29,184,106,0.3);border-radius:10px;padding:14px;">
-          <div style="color:var(--green);font-weight:800;font-size:1rem;">✅ ${data.inserted} records saved successfully</div>
-          ${data.failed ? `<div style="color:var(--red);margin-top:4px;">⚠️ ${data.failed} rows had errors</div>` : ''}
-          ${data.errors && data.errors.length ? `<ul style="margin:8px 0 0;color:var(--red);font-size:0.75rem;">${data.errors.map(e => `<li>${e}</li>`).join('')}</ul>` : ''}
-        </div>`;
-      showMsg(`CSV processed — ${data.inserted} warranty records saved.`, 'success');
-      fi.value = '';
-      document.getElementById('csvFileName').textContent = '';
-    } else {
-      resultBox.innerHTML = `<div style="color:var(--red);">❌ ${data.message}</div>`;
+  if (!fi.files.length) { showMsg('Pehle CSV file select karo.', 'error'); return; }
+  if (!adminKey) { showMsg('Pehle Admin Console unlock karo.', 'error'); return; }
+
+  resultBox.innerHTML = '<div style="color:var(--text3);">⏳ File read ho rahi hai...</div>';
+
+  // Use FileReader to read file as text — no multer needed
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    const csvText = e.target.result;
+    resultBox.innerHTML = '<div style="color:var(--text3);">⏳ Server pe upload ho raha hai...</div>';
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/warranties/csv-json`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ csvText })
+      });
+      const data = await res.json();
+      if (data.success) {
+        resultBox.innerHTML = `
+          <div style="background:var(--green-dim);border:1px solid rgba(29,184,106,0.3);border-radius:10px;padding:14px;">
+            <div style="color:var(--green);font-weight:800;font-size:1rem;">✅ ${data.inserted} records saved! (Total in DB: ${data.totalInDb})</div>
+            ${data.failed ? `<div style="color:var(--red);margin-top:4px;">⚠️ ${data.failed} rows had errors</div>` : ''}
+            ${data.errors && data.errors.length ? `<ul style="margin:8px 0 0;color:var(--red);font-size:0.75rem;">${data.errors.map(e=>`<li>${e}</li>`).join('')}</ul>` : ''}
+          </div>`;
+        showMsg(`CSV processed — ${data.inserted} warranty records saved.`, 'success');
+        fi.value = '';
+        document.getElementById('csvFileName').textContent = '';
+      } else {
+        resultBox.innerHTML = `<div style="color:var(--red);">❌ ${data.message}</div>`;
+        showMsg(data.message, 'error');
+      }
+    } catch(err) {
+      resultBox.innerHTML = `<div style="color:var(--red);">❌ Server se connect nahi ho paya. Backend chal raha hai?</div>`;
     }
-  } catch {
-    resultBox.innerHTML = `<div style="color:var(--red);">❌ Upload failed — check server connection.</div>`;
-  }
+  };
+  reader.onerror = () => { resultBox.innerHTML = '<div style="color:var(--red);">❌ File read nahi hui.</div>'; };
+  reader.readAsText(fi.files[0], 'utf-8');
 });
 
 // Drag & drop
