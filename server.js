@@ -574,7 +574,7 @@ app.post('/api/qr', requireAdmin, async (req, res) => {
 
     const base = process.env.FRONTEND_URL || process.env.ALLOWED_ORIGIN || '';
     const params = new URLSearchParams({ warrantyId, branch: branchName || '', address: siteAddress || '' });
-    const targetUrl = `${base}/register.html?${params.toString()}`;
+    const targetUrl = `${base}/?${params.toString()}`;
     try {
         const qrDataUrl = await QRCode.toDataURL(targetUrl, { width: 400, margin: 2, color: { dark: '#1c2733', light: '#ffffff' } });
         res.json({ success: true, qr: qrDataUrl, url: targetUrl });
