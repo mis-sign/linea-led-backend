@@ -19,8 +19,14 @@ if (!ADMIN_API_KEY || ADMIN_API_KEY === 'change-this-to-a-long-random-string') {
     console.warn('\n⚠️  WARNING: ADMIN_API_KEY is not set to a secure value in .env — admin routes are NOT protected properly.\n');
 }
 
-app.use(express.json());
-app.use(cors({ origin: process.env.ALLOWED_ORIGIN || '*' }));
+app.use(express.json({ limit: '20mb' }));
+app.use(cors({
+    origin: process.env.ALLOWED_ORIGIN || '*',
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'x-admin-key'],
+    credentials: false
+}));
+app.options('*', cors());
 
 const submitLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -488,8 +494,94 @@ app.post('/api/admin/warranties/bulk-upload', requireAdmin, csvUpload.single('fi
 });
 
 // ==========================================
-// QR GENERATOR — encodes deep-link that prefills the complaint form
+// BULK CSV UPLOAD v2 — JSON base64 (multer-free, works everywhere)
+// Frontend sends: { csvBase64: "base64string", fileName: "file.csv" }
 // ==========================================
+app.post('/api/admin/warranties/csv-json', requireAdmin, (req, res) => {
+    const { csvBase64, csvText } = req.body;
+    if (!csvBase64 && !csvText) {
+        return res.status(400).json({ success: false, message: 'csvBase64 or csvText is required' });
+    }
+    let text;
+    try {
+        text = csvText || Buffer.from(csvBase64, 'base64').toString('utf-8');
+    } catch (e) {
+        return res.status(400).json({ success: false, message: 'Invalid base64 data' });
+    }
+
+    const allRows = parseCsv(text);
+    if (allRows.length < 2) return res.status(400).json({ success: false, message: 'CSV has no data rows' });
+
+    const headers = allRows[0].map(h => h.trim());
+    const dataRows = allRows.slice(1);
+
+    const isFullExport = headers.includes('Warranty ID') && headers.includes('Customer Name');
+    const isSimple = headers.includes('warrantyId') && headers.includes('customerName');
+
+    if (!isFullExport && !isSimple) {
+        return res.status(400).json({ success: false, message: `Unrecognized CSV headers. Found: ${headers.slice(0,5).join(', ')}. Expected "Warranty ID" and "Customer Name" columns.` });
+    }
+
+    const insertStmt = db.prepare(`
+        INSERT INTO warranties
+        (warranty_id, customer_name, branch_name, contact_number, contact_person_name, email, site_address, city_name, pin_code, registration_status, product_name, product_type, sku_name, brand, warranty_months, start_date, end_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(warranty_id) DO UPDATE SET
+          customer_name=excluded.customer_name, branch_name=excluded.branch_name, contact_number=excluded.contact_number,
+          contact_person_name=excluded.contact_person_name, email=excluded.email, site_address=excluded.site_address,
+          city_name=excluded.city_name, pin_code=excluded.pin_code, registration_status=excluded.registration_status,
+          product_name=excluded.product_name, product_type=excluded.product_type, sku_name=excluded.sku_name, brand=excluded.brand,
+          warranty_months=excluded.warranty_months, start_date=excluded.start_date, end_date=excluded.end_date
+    `);
+
+    let inserted = 0, failed = 0;
+    const errors = [];
+
+    const insertOne = (cells, idx) => {
+        const rowNum = idx + 2;
+        const row = {};
+        headers.forEach((h, i) => { row[h] = (cells[i] || '').trim(); });
+        if (isFullExport) {
+            const warrantyId = row['Warranty ID'];
+            const customerName = row['Customer Name'];
+            if (!warrantyId || !customerName) { failed++; errors.push(`Row ${rowNum}: missing Warranty ID or Customer Name`); return; }
+            const startD = parseFlexibleDate(row['Warranty Start Date']);
+            const endD = parseFlexibleDate(row['Warranty End Date']);
+            if (!startD || !endD) { failed++; errors.push(`Row ${rowNum}: bad date`); return; }
+            const monthsMatch = (row['Total Warranty'] || '').match(/(\d+)/);
+            const years = monthsMatch ? Number(monthsMatch[1]) : null;
+            const months = years ? (row['Total Warranty'].toLowerCase().includes('year') ? years * 12 : years) : Math.round((endD - startD) / (1000*60*60*24*30));
+            insertStmt.run(warrantyId, customerName, row['Project Name']||null, row['Contact Person Number']||null,
+                row['Contact Person Name']||null, (row['Email']&&row['Email']!=='-')?row['Email']:null,
+                row['Site Address']||null, row['City Name']||null, row['Pin Code']||null,
+                row['Registration Status']||null, row['Product Name']||null, row['Product Type']||null,
+                row['SKU Name']||null, row['Brand']||null, months||12, toISODate(startD), toISODate(endD));
+            inserted++;
+        } else {
+            const warrantyId = row.warrantyId, customerName = row.customerName;
+            if (!warrantyId || !customerName || !row.startDate) { failed++; errors.push(`Row ${rowNum}: missing required field`); return; }
+            const months = Number(row.warrantyMonths) || 12;
+            const start = parseFlexibleDate(row.startDate);
+            if (!start) { failed++; errors.push(`Row ${rowNum}: invalid startDate`); return; }
+            const end = new Date(start); end.setMonth(end.getMonth() + months);
+            insertStmt.run(warrantyId, customerName, row.branchName||null, row.contactNumber||null,
+                null, null, row.siteAddress||null, null, null, null, null, null, null, null,
+                months, toISODate(start), toISODate(end));
+            inserted++;
+        }
+    };
+
+    const runBulk = db.transaction((rows) => {
+        rows.forEach((cells, idx) => { try { insertOne(cells, idx); } catch(err) { failed++; errors.push(`Row ${idx+2}: ${err.message}`); } });
+    });
+
+    try { runBulk(dataRows); }
+    catch (err) { return res.status(500).json({ success: false, message: `Upload failed: ${err.message}` }); }
+
+    const totalNow = db.prepare('SELECT COUNT(*) AS c FROM warranties').get().c;
+    console.log(`[CSV JSON Upload] ${inserted} saved, ${failed} failed. Total in DB: ${totalNow}`);
+    res.json({ success: true, message: `Processed ${dataRows.length} rows`, inserted, failed, totalInDb: totalNow, errors: errors.slice(0, 30) });
+});
 app.post('/api/qr', requireAdmin, async (req, res) => {
     const { warrantyId, branchName, siteAddress } = req.body;
     if (!isNonEmptyString(warrantyId)) return res.status(400).json({ success: false, message: 'warrantyId is required' });
